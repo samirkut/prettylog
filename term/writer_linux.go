@@ -11,13 +11,26 @@ import (
 	"strings"
 )
 
+// accepts the number of lines to clear. -1 implies all
 // Flush moves the cursor to location where last write started and clears the text written using previous Write.
-func (w *Writer) Clear() {
-	for i := 0; i < w.lineCount; i++ {
+func (w *Writer) Clear(linesToClear int) {
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
+
+	if linesToClear == 0 {
+		return
+	}
+
+	if linesToClear < 0 || linesToClear > w.lineCount {
+		linesToClear = w.lineCount
+	}
+
+	for i := 0; i < linesToClear; i++ {
 		fmt.Fprintf(w.Out, "%c[%dA", esc, 0) // move the cursor up
 		fmt.Fprintf(w.Out, "%c[2K\r", esc)   // clear the line
+
+		w.lineCount--
 	}
-	w.lineCount = 0
 }
 
 // GetTermDimensions returns the width and height of the current terminal

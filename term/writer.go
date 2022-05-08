@@ -44,30 +44,31 @@ func (w *Writer) GetLineCount() int {
 
 // Print writes the buffer contents to Out and resets the buffer.
 // It stores the number of lines to go up the Writer in the Writer.lineCount.
-func (w *Writer) Print() error {
+// returns the lineCount and error if any
+func (w *Writer) Print() (int, error) {
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
 	// do nothing if buffer is empty
 	if len(w.Buf.Bytes()) == 0 {
-		return nil
+		return w.lineCount, nil
 	}
 
-	var currentLine bytes.Buffer
+	var charCount int
 	for _, b := range w.Buf.Bytes() {
 		if b == '\n' {
 			w.lineCount++
-			currentLine.Reset()
+			charCount = 0
 		} else {
-			currentLine.Write([]byte{b})
-			if currentLine.Len() > termWidth {
+			charCount++
+			if charCount > termWidth {
 				w.lineCount++
-				currentLine.Reset()
+				charCount = 0
 			}
 		}
 	}
 	_, err := w.Out.Write(w.Buf.Bytes())
 	w.Buf.Reset()
-	return err
+	return w.lineCount, err
 }
 
 func (w *Writer) Write(b []byte) (int, error) {

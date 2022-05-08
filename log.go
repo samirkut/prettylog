@@ -3,6 +3,7 @@ package prettylog
 import (
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -33,31 +34,33 @@ func NewPrettyLogger(logger *logrus.Logger, cfg Config) PrettyLogger {
 }
 
 type PrettyLogger interface {
-	AddNewMessage(MessageType, string)
-	UpdateMessage(MessageType, string)
+	AddNewMessage(MessageType, string) error
+	UpdateMessage(MessageType, string) error
 }
 
 type dummylogger struct {
 }
 
-func (*dummylogger) AddNewMessage(MessageType, string) {
+func (*dummylogger) AddNewMessage(MessageType, string) error {
+	return nil
 }
 
-func (*dummylogger) UpdateMessage(MessageType, string) {
+func (*dummylogger) UpdateMessage(MessageType, string) error {
+	return nil
 }
 
 type prettylogger struct {
-	w    *term.Writer
-	logW *term.Writer
-	cfg  Config
-	mu   sync.Mutex
+	w            *term.Writer
+	cfg          Config
+	mu           sync.Mutex
+	msgLineCount int
+	logLineCount int
 }
 
 func newprettylogger(cfg Config) *prettylogger {
 	return &prettylogger{
-		w:    term.New(os.Stdout),
-		logW: term.New(os.Stdout),
-		cfg:  cfg,
+		w:   term.New(os.Stdout),
+		cfg: cfg,
 	}
 }
 
@@ -69,14 +72,10 @@ func (p *prettylogger) Fire(entry *logrus.Entry) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// hooks are protected by a mutex
+	// hooks are protected by a mutex within logrus
+	//ct.Writer = p.w
 	p.setLogColor(entry.Level)
 	_, err := fmt.Fprintf(p.w, "[%s] ", strings.ToUpper(entry.Level.String()))
-	if err != nil {
-		return err
-	}
-
-	err = p.logW.Print()
 	if err != nil {
 		return err
 	}
@@ -87,31 +86,66 @@ func (p *prettylogger) Fire(entry *logrus.Entry) error {
 		return err
 	}
 
-	return p.logW.Print()
+	if p.logLineCount > p.cfg.MaxLogRows {
+		p.clearLogs()
+	}
+
+	lineCount, err := p.w.Print()
+	if err != nil {
+		return err
+	}
+
+	p.logLineCount = lineCount - p.msgLineCount
+	if p.logLineCount <= 0 {
+		log.Panic("log line count invalid")
+	}
+	return nil
+
 }
 
-func (p *prettylogger) AddNewMessage(tp MessageType, message string) {
+func (p *prettylogger) AddNewMessage(tp MessageType, message string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	p.logW.Reset()
+	p.clearLogs()
+
+	//ct.Writer = p.w
 	p.w.Reset()
 	p.setMessageColor(tp)
-	fmt.Fprintln(p.w, message+"\n")
-	p.w.Print()
+	fmt.Fprintln(p.w, message)
 	ct.ResetColor()
+
+	lineCount, err := p.w.Print()
+	if err != nil {
+		return err
+	}
+	p.msgLineCount = lineCount
+	return nil
 }
 
-func (p *prettylogger) UpdateMessage(tp MessageType, message string) {
+func (p *prettylogger) UpdateMessage(tp MessageType, message string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	p.logW.Reset()
-	p.w.Clear()
+	p.clearLogs()
+
+	//ct.Writer = p.w
+	p.w.Clear(-1)
 	p.setMessageColor(tp)
-	fmt.Fprintln(p.w, message+"\n")
-	p.w.Print()
+	fmt.Fprintln(p.w, message)
 	ct.ResetColor()
+
+	lineCount, err := p.w.Print()
+	if err != nil {
+		return err
+	}
+	p.msgLineCount = lineCount
+	return nil
+}
+
+func (p *prettylogger) clearLogs() {
+	p.w.Clear(p.logLineCount)
+	p.logLineCount = 0
 }
 
 func (p *prettylogger) setMessageColor(tp MessageType) {

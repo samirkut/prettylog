@@ -46,40 +46,52 @@ type consoleScreenBufferInfo struct {
 	maximumWindowSize coord
 }
 
+// accepts the number of lines to clear. -1 implies all
 // Flush moves the cursor to location where last write started and clears the text written using previous Write.
-func (w *Writer) Clear() {
+func (w *Writer) Clear(linesToClear int) {
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
+
+	if linesToClear == 0 {
+		return
+	}
+
+	if linesToClear < 0 || linesToClear > w.lineCount {
+		linesToClear = w.lineCount
+	}
+
 	f, ok := io.Writer(w.Out).(*os.File)
 	if ok && !isatty.IsTerminal(f.Fd()) {
 		ok = false
 	}
 
 	if !ok {
-		for i := 0; i < w.lineCount; i++ {
+		for i := 0; i < linesToClear; i++ {
 			fmt.Fprintf(w.Out, "%c[%dA", esc, 0) // move the cursor up
 			fmt.Fprintf(w.Out, "%c[2K\r", esc)   // clear the line
+			w.lineCount--
 		}
-		w.lineCount = 0
-		return
-	}
+	} else {
+		fd := f.Fd()
+		var csbi consoleScreenBufferInfo
+		procGetConsoleScreenBufferInfo.Call(fd, uintptr(unsafe.Pointer(&csbi)))
 
-	fd := f.Fd()
-	var csbi consoleScreenBufferInfo
-	procGetConsoleScreenBufferInfo.Call(fd, uintptr(unsafe.Pointer(&csbi)))
+		for i := 0; i < linesToClear; i++ {
+			// move the cursor up
+			csbi.cursorPosition.y--
+			procSetConsoleCursorPosition.Call(fd, uintptr(*(*int32)(unsafe.Pointer(&csbi.cursorPosition))))
+			// clear the line
+			cursor := coord{
+				x: csbi.window.left,
+				y: csbi.window.top + csbi.cursorPosition.y,
+			}
+			var count, w dword
+			count = dword(csbi.size.x)
+			procFillConsoleOutputCharacter.Call(fd, uintptr(' '), uintptr(count), *(*uintptr)(unsafe.Pointer(&cursor)), uintptr(unsafe.Pointer(&w)))
 
-	for i := 0; i < w.lineCount; i++ {
-		// move the cursor up
-		csbi.cursorPosition.y--
-		procSetConsoleCursorPosition.Call(fd, uintptr(*(*int32)(unsafe.Pointer(&csbi.cursorPosition))))
-		// clear the line
-		cursor := coord{
-			x: csbi.window.left,
-			y: csbi.window.top + csbi.cursorPosition.y,
+			w.lineCount--
 		}
-		var count, w dword
-		count = dword(csbi.size.x)
-		procFillConsoleOutputCharacter.Call(fd, uintptr(' '), uintptr(count), *(*uintptr)(unsafe.Pointer(&cursor)), uintptr(unsafe.Pointer(&w)))
 	}
-	w.lineCount = 0
 }
 
 // GetTermDimensions returns the width and height of the current terminal
