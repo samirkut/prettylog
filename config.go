@@ -36,7 +36,7 @@ func NewConfig() Config {
 			logrus.InfoLevel,
 		},
 		LevelColors: map[logrus.Level]ct.Color{
-			logrus.InfoLevel:  ct.Green,
+			//logrus.InfoLevel:  ct.Green,
 			logrus.WarnLevel:  ct.Yellow,
 			logrus.ErrorLevel: ct.Red,
 		},

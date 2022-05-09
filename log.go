@@ -3,7 +3,6 @@ package prettylog
 import (
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"strings"
 	"sync"
@@ -72,35 +71,25 @@ func (p *prettylogger) Fire(entry *logrus.Entry) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// hooks are protected by a mutex within logrus
-	//ct.Writer = p.w
-	p.setLogColor(entry.Level)
-	_, err := fmt.Fprintf(p.w, "[%s] ", strings.ToUpper(entry.Level.String()))
-	if err != nil {
-		return err
-	}
-
-	ct.ResetColor()
-	_, err = fmt.Fprintln(p.w, entry.Message)
-	if err != nil {
-		return err
-	}
-
 	if p.logLineCount > p.cfg.MaxLogRows {
 		p.clearLogs()
 	}
 
-	lineCount, err := p.w.Print()
+	if p.logLineCount == 0 {
+		// add a blank line before
+		err := p.writeLog("\n")
+		if err != nil {
+			return err
+		}
+	}
+
+	p.setLogColor(entry.Level)
+	err := p.writeLog("[%s] %s\n", strings.ToUpper(entry.Level.String()), entry.Message)
 	if err != nil {
 		return err
 	}
-
-	p.logLineCount = lineCount - p.msgLineCount
-	if p.logLineCount <= 0 {
-		log.Panic("log line count invalid")
-	}
+	ct.ResetColor()
 	return nil
-
 }
 
 func (p *prettylogger) AddNewMessage(tp MessageType, message string) error {
@@ -109,16 +98,16 @@ func (p *prettylogger) AddNewMessage(tp MessageType, message string) error {
 
 	p.clearLogs()
 
-	//ct.Writer = p.w
 	p.w.Reset()
 	p.setMessageColor(tp)
+	defer ct.ResetColor()
 	fmt.Fprintln(p.w, message)
-	ct.ResetColor()
 
 	lineCount, err := p.w.Print()
 	if err != nil {
 		return err
 	}
+
 	p.msgLineCount = lineCount
 	return nil
 }
@@ -129,17 +118,29 @@ func (p *prettylogger) UpdateMessage(tp MessageType, message string) error {
 
 	p.clearLogs()
 
-	//ct.Writer = p.w
 	p.w.Clear(-1)
+
 	p.setMessageColor(tp)
+	defer ct.ResetColor()
 	fmt.Fprintln(p.w, message)
-	ct.ResetColor()
 
 	lineCount, err := p.w.Print()
 	if err != nil {
 		return err
 	}
+
 	p.msgLineCount = lineCount
+	return nil
+}
+
+func (p *prettylogger) writeLog(format string, args ...interface{}) error {
+	fmt.Fprintf(p.w, format, args...)
+	lineCount, err := p.w.Print()
+	if err != nil {
+		return err
+	}
+
+	p.logLineCount = lineCount - p.msgLineCount
 	return nil
 }
 
