@@ -1,0 +1,1 @@
+This package is mostly based off https://github.com/apoorvam/goterminal with some minor edits

@@ -1,4 +1,4 @@
-module prettylog
+module github.com/samirkut/prettylog
 
 go 1.18
 
