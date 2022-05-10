@@ -1,8 +1,9 @@
 package main
 
 import (
-	"github.com/samirkut/prettylog"
 	"time"
+
+	"github.com/samirkut/prettylog"
 
 	"github.com/sirupsen/logrus"
 )
