@@ -7,10 +7,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/samirkut/prettylog/term"
-
 	ct "github.com/daviddengcn/go-colortext"
 	"github.com/mattn/go-isatty"
+	"github.com/samirkut/prettylog/term"
 	"github.com/sirupsen/logrus"
 )
 
