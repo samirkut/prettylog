@@ -12,7 +12,7 @@ func main() {
 	cfg := prettylog.NewConfig()
 	l, _ := prettylog.NewPrettyGlobalLogger(cfg)
 	l.Start()
-	defer l.Close()
+	defer l.Stop()
 
 	ch := make(chan int)
 

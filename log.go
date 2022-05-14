@@ -37,8 +37,8 @@ func NewPrettyLogger(logger *logrus.Logger, cfg Config) (PrettyLogger, error) {
 }
 
 type PrettyLogger interface {
-	Start() error
-	Close()
+	Start()
+	Stop()
 	AddProgress(format string, args ...interface{}) error
 	AppendMessage(success bool, format string, args ...interface{}) error
 	LogMessage(level logrus.Level, format string, args ...interface{}) error
@@ -59,15 +59,14 @@ func (*dummylogger) LogMessage(lvl logrus.Level, format string, args ...interfac
 	return nil
 }
 
-func (*dummylogger) Start() error {
-	return nil
+func (*dummylogger) Start() {
 }
 
-func (*dummylogger) Close() {}
+func (*dummylogger) Stop() {}
 
 type prettylogger struct {
 	closed bool
-	p      *tea.Program
+	prog   *tea.Program
 	cfg    Config
 	model  model
 	mu     sync.RWMutex
@@ -75,19 +74,19 @@ type prettylogger struct {
 
 func newprettylogger(cfg Config) (*prettylogger, error) {
 	mod := newModel(cfg)
-	p := tea.NewProgram(mod)
+	prog := tea.NewProgram(mod)
 
 	return &prettylogger{
-		p:      p,
+		prog:   prog,
 		cfg:    cfg,
 		closed: false,
 		model:  mod,
 	}, nil
 }
 
-func (p *prettylogger) Start() error {
+func (p *prettylogger) Start() {
 	go func() {
-		_ = p.p.Start()
+		_ = p.prog.Start()
 
 		p.mu.Lock()
 		p.closed = true
@@ -96,14 +95,13 @@ func (p *prettylogger) Start() error {
 		close(p.model.messagesCh)
 		p.mu.Unlock()
 	}()
-	return nil
 }
 
-func (p *prettylogger) Close() {
+func (p *prettylogger) Stop() {
 	//HACK: give a second or so to let the channels flush?
 	time.Sleep(time.Second)
-	p.p.Quit()
-	p.p.Kill()
+	p.prog.Quit()
+	p.prog.Kill()
 }
 
 func (p *prettylogger) Levels() []logrus.Level {
