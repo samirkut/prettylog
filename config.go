@@ -8,13 +8,12 @@ import (
 type MessageType int
 
 const (
-	NotStarted MessageType = iota
-	InProgress
-	Succeeded
+	Succeeded MessageType = iota
 	Failed
 )
 
 type Config struct {
+	ProgressColor   ct.Color
 	MessageColors   map[MessageType]ct.Color
 	UseBrightColors bool
 	Levels          []logrus.Level
@@ -24,10 +23,10 @@ type Config struct {
 
 func NewConfig() Config {
 	return Config{
+		ProgressColor: ct.Yellow,
 		MessageColors: map[MessageType]ct.Color{
-			InProgress: ct.Yellow,
-			Succeeded:  ct.Green,
-			Failed:     ct.Red,
+			Succeeded: ct.Green,
+			Failed:    ct.Red,
 		},
 		UseBrightColors: true,
 		Levels: []logrus.Level{
@@ -40,6 +39,6 @@ func NewConfig() Config {
 			logrus.WarnLevel:  ct.Yellow,
 			logrus.ErrorLevel: ct.Red,
 		},
-		MaxLogRows: 5,
+		MaxLogRows: 10,
 	}
 }

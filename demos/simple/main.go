@@ -10,7 +10,9 @@ import (
 
 func main() {
 	cfg := prettylog.NewConfig()
-	l := prettylog.NewPrettyGlobalLogger(cfg)
+	l, _ := prettylog.NewPrettyGlobalLogger(cfg)
+	l.Start()
+	defer l.Close()
 
 	runSequence(l, []string{
 		"[...] Starting processing again",
@@ -18,13 +20,21 @@ func main() {
 		"[...] Still doing it 2",
 		"[OK] Failed to do the task",
 	}, false)
-
 }
 
 func runSequence(l prettylog.PrettyLogger, msgs []string, success bool) {
 	for i, m := range msgs {
-		if i == 0 {
-			l.AddNewMessage(prettylog.InProgress, m)
+		if i == len(msgs)-1 {
+			tp := prettylog.Failed
+			if success {
+				tp = prettylog.Succeeded
+			}
+			l.AppendMessage(tp, m)
+			time.Sleep(time.Millisecond * 200)
+			logrus.Error("random updates after finish")
+		} else {
+			l.AddProgress(m)
+
 			time.Sleep(time.Millisecond * 200)
 			logrus.Warn("initializing messages something like this will have to do for now. lorem epsum ditum?")
 
@@ -36,19 +46,6 @@ func runSequence(l prettylog.PrettyLogger, msgs []string, success bool) {
 			time.Sleep(time.Millisecond * 200)
 			logrus.Infof("%d more random updates...", i)
 			time.Sleep(time.Millisecond * 200)
-		} else {
-			tp := prettylog.InProgress
-			if i == len(msgs)-1 {
-				tp = prettylog.Failed
-				if success {
-					tp = prettylog.Succeeded
-				}
-
-				time.Sleep(time.Millisecond * 200)
-				logrus.Error("random updates after finish")
-			}
-
-			l.UpdateMessage(tp, m)
 		}
 	}
 }

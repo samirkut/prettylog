@@ -10,7 +10,10 @@ import (
 
 func main() {
 	cfg := prettylog.NewConfig()
-	l := prettylog.NewPrettyGlobalLogger(cfg)
+	l, _ := prettylog.NewPrettyGlobalLogger(cfg)
+	l.Start()
+	defer l.Close()
+
 	ch := make(chan int)
 
 	go printLogs(ch)
@@ -37,25 +40,26 @@ func main() {
 
 	ch <- 0
 	close(ch)
-
-	time.Sleep(time.Second)
 }
 
 func runSequence(l prettylog.PrettyLogger, msgs []string, success bool) {
 	for i, m := range msgs {
 		time.Sleep(time.Millisecond * 300)
 		if i == 0 {
-			l.AddNewMessage(prettylog.InProgress, m)
+			l.AddProgress(m)
 			logrus.Warn("initializing messages something like this will have to do for now. lorem epsum ditum?")
 		} else {
-			tp := prettylog.InProgress
+
 			if i == len(msgs)-1 {
-				tp = prettylog.Failed
+				tp := prettylog.Failed
 				if success {
 					tp = prettylog.Succeeded
 				}
+				l.AppendMessage(tp, m)
+			} else {
+				l.AddProgress(m)
 			}
-			l.UpdateMessage(tp, m)
+
 			logrus.Info("random updates coming in from the activity")
 		}
 		for i := 0; i < 10; i++ {

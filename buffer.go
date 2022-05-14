@@ -1,6 +1,7 @@
 package prettylog
 
-// buffer impl to hold logs. rewrite using a ring buffer
+// buffer impl to hold logs.
+// TODO: rewrite using a ring buffer
 
 type buffer struct {
 	lines []string

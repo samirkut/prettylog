@@ -3,63 +3,108 @@ package prettylog
 import (
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"strings"
 	"sync"
+	"time"
 
-	ct "github.com/daviddengcn/go-colortext"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/mattn/go-isatty"
-	"github.com/samirkut/prettylog/term"
 	"github.com/sirupsen/logrus"
 )
 
-func NewPrettyGlobalLogger(cfg Config) PrettyLogger {
+func NewPrettyGlobalLogger(cfg Config) (PrettyLogger, error) {
 	return NewPrettyLogger(logrus.StandardLogger(), cfg)
 }
 
-func NewPrettyLogger(logger *logrus.Logger, cfg Config) PrettyLogger {
+func NewPrettyLogger(logger *logrus.Logger, cfg Config) (PrettyLogger, error) {
 	if !isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd()) {
-		return &dummylogger{}
+		return &dummylogger{}, nil
 	}
 
-	plog := newprettylogger(cfg)
+	plog, err := newprettylogger(cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	logger.AddHook(plog)
 	if logger.Out == os.Stdout || logger.Out == os.Stderr {
 		logger.SetOutput(ioutil.Discard)
+		log.SetOutput(ioutil.Discard)
 	}
 
-	return plog
+	return plog, nil
 }
 
 type PrettyLogger interface {
-	AddNewMessage(MessageType, string) error
-	UpdateMessage(MessageType, string) error
+	Start() error
+	Close()
+	AddProgress(format string, args ...interface{}) error
+	AppendMessage(tp MessageType, format string, args ...interface{}) error
+	LogMessage(level logrus.Level, format string, args ...interface{}) error
 }
 
 type dummylogger struct {
 }
 
-func (*dummylogger) AddNewMessage(MessageType, string) error {
+func (*dummylogger) AddProgress(format string, args ...interface{}) error {
 	return nil
 }
 
-func (*dummylogger) UpdateMessage(MessageType, string) error {
+func (*dummylogger) AppendMessage(tp MessageType, format string, args ...interface{}) error {
 	return nil
 }
+
+func (*dummylogger) LogMessage(lvl logrus.Level, format string, args ...interface{}) error {
+	return nil
+}
+
+func (*dummylogger) Start() error {
+	return nil
+}
+
+func (*dummylogger) Close() {}
 
 type prettylogger struct {
-	w            *term.Writer
-	cfg          Config
-	mu           sync.Mutex
-	msgLineCount int
-	logLineCount int
+	closed bool
+	p      *tea.Program
+	cfg    Config
+	model  model
+	mu     sync.RWMutex
 }
 
-func newprettylogger(cfg Config) *prettylogger {
+func newprettylogger(cfg Config) (*prettylogger, error) {
+	mod := newModel(cfg)
+	p := tea.NewProgram(mod)
+
 	return &prettylogger{
-		w:   term.New(os.Stdout),
-		cfg: cfg,
-	}
+		p:      p,
+		cfg:    cfg,
+		closed: false,
+		model:  mod,
+	}, nil
+}
+
+func (p *prettylogger) Start() error {
+	go func() {
+		_ = p.p.Start()
+
+		p.mu.Lock()
+		p.closed = true
+		close(p.model.logCh)
+		close(p.model.progressCh)
+		close(p.model.messagesCh)
+		p.mu.Unlock()
+	}()
+	return nil
+}
+
+func (p *prettylogger) Close() {
+	//HACK: give a second or so to let the channels flush?
+	time.Sleep(time.Second)
+	p.p.Quit()
+	p.p.Kill()
 }
 
 func (p *prettylogger) Levels() []logrus.Level {
@@ -67,95 +112,54 @@ func (p *prettylogger) Levels() []logrus.Level {
 }
 
 func (p *prettylogger) Fire(entry *logrus.Entry) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	return p.writeLog(entry.Level, "[%s] %s", strings.ToUpper(entry.Level.String()), entry.Message)
+}
 
-	if p.logLineCount > p.cfg.MaxLogRows {
-		p.clearLogs()
+func (p *prettylogger) LogMessage(lvl logrus.Level, format string, args ...interface{}) error {
+	return p.writeLog(lvl, format, args...)
+}
+
+func (p *prettylogger) AddProgress(format string, args ...interface{}) error {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	if p.closed {
+		return fmt.Errorf("closed")
 	}
 
-	if p.logLineCount == 0 {
-		// add a blank line before
-		err := p.writeLog("\n")
-		if err != nil {
-			return err
-		}
+	p.model.progressCh <- ProgressMsg{
+		Details: fmt.Sprintf(format, args...),
 	}
 
-	p.setLogColor(entry.Level)
-	err := p.writeLog("[%s] %s\n", strings.ToUpper(entry.Level.String()), entry.Message)
-	if err != nil {
-		return err
-	}
-	ct.ResetColor()
 	return nil
 }
 
-func (p *prettylogger) AddNewMessage(tp MessageType, message string) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+func (p *prettylogger) AppendMessage(tp MessageType, format string, args ...interface{}) error {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 
-	p.clearLogs()
-
-	p.w.Reset()
-	p.setMessageColor(tp)
-	defer ct.ResetColor()
-	fmt.Fprintln(p.w, message)
-
-	lineCount, err := p.w.Print()
-	if err != nil {
-		return err
+	if p.closed {
+		return fmt.Errorf("closed")
 	}
 
-	p.msgLineCount = lineCount
+	p.model.messagesCh <- AppendMessage{
+		Success: tp == Succeeded,
+		Details: fmt.Sprintf(format, args...),
+	}
+
 	return nil
 }
 
-func (p *prettylogger) UpdateMessage(tp MessageType, message string) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+func (p *prettylogger) writeLog(lvl logrus.Level, format string, args ...interface{}) error {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 
-	p.clearLogs()
-
-	p.w.Clear(-1)
-
-	p.setMessageColor(tp)
-	defer ct.ResetColor()
-	fmt.Fprintln(p.w, message)
-
-	lineCount, err := p.w.Print()
-	if err != nil {
-		return err
+	if p.closed {
+		return fmt.Errorf("closed")
 	}
 
-	p.msgLineCount = lineCount
+	msg := fmt.Sprintf(format, args...)
+
+	p.model.logCh <- LogMsg{lvl, msg}
 	return nil
-}
-
-func (p *prettylogger) writeLog(format string, args ...interface{}) error {
-	fmt.Fprintf(p.w, format, args...)
-	lineCount, err := p.w.Print()
-	if err != nil {
-		return err
-	}
-
-	p.logLineCount = lineCount - p.msgLineCount
-	return nil
-}
-
-func (p *prettylogger) clearLogs() {
-	p.w.Clear(p.logLineCount)
-	p.logLineCount = 0
-}
-
-func (p *prettylogger) setMessageColor(tp MessageType) {
-	if col, found := p.cfg.MessageColors[tp]; found {
-		ct.Foreground(col, p.cfg.UseBrightColors)
-	}
-}
-
-func (p *prettylogger) setLogColor(lvl logrus.Level) {
-	if col, found := p.cfg.LevelColors[lvl]; found {
-		ct.Foreground(col, p.cfg.UseBrightColors)
-	}
 }
