@@ -17,11 +17,10 @@ var (
 	// ansi codes https://www.lihaoyi.com/post/BuildyourownCommandLinewithANSIescapecodes.html
 
 	timerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render
-	logStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("225")).Render
-
-	progressMsgStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("158")).Render
-	failedMsgStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render
-	successMsgStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Render
+	// logStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("225")).Render
+	// progressMsgStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("158")).Render
+	// failedMsgStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render
+	// successMsgStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Render
 )
 
 const (
@@ -52,7 +51,7 @@ type model struct {
 	cfg          Config
 	spinner      spinner.Model
 	progress     string
-	messages     []string
+	messages     []AppendMessage
 	logLines     *buffer
 	screenWidth  int
 	screenHeight int
@@ -68,7 +67,7 @@ func newModel(cfg Config) model {
 	return model{
 		cfg:          cfg,
 		spinner:      sp,
-		messages:     make([]string, 0),
+		messages:     make([]AppendMessage, 0),
 		logLines:     newBuffer(cfg.MaxLogRows),
 		startTime:    time.Now().UTC(),
 		screenWidth:  80,
@@ -90,6 +89,9 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// always update duration
+	m.duration = time.Since(m.startTime)
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+c" {
@@ -104,11 +106,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 	case TimerTickMsg:
-		m.duration = time.Since(m.startTime)
+		//m.duration = time.Since(m.startTime)
 		return m, m.timerTick
 	case LogMsg:
 		if msg.Details != "" {
-			m.logLines.Add(msg.Details)
+			m.logLines.Add(msg)
 		}
 		return m, m.fetchLogMsg
 	case ProgressMsg:
@@ -118,7 +120,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.fetchProgressMsg
 	case AppendMessage:
 		if msg.Details != "" {
-			m.messages = append(m.messages, msg.Details)
+			m.messages = append(m.messages, msg)
 		}
 		m.progress = ""
 		return m, m.fetchAppendMsg
@@ -132,22 +134,31 @@ func (m model) View() string {
 	sb.WriteString("\n")
 
 	for _, res := range m.messages {
-		p := wordwrap.String(res, m.screenWidth-5)
-		sb.WriteString(successMsgStyle(p))
+		p := wordwrap.String(res.Details, m.screenWidth-5)
+		if res.Success {
+			p = m.successMsgStyle()(p)
+		} else {
+			p = m.failedMsgStyle()(p)
+		}
+		sb.WriteString(p)
 		sb.WriteString("\n")
 	}
 
 	if m.progress != "" {
 		p := fmt.Sprintf("%s %s", m.spinner.View(), m.progress)
 		p = wordwrap.String(p, m.screenWidth-5)
-		sb.WriteString(progressMsgStyle(p))
+		sb.WriteString(m.progressMsgStyle()(p))
 		sb.WriteString("\n")
 	}
 
 	sb.WriteString("\n")
+
 	for _, l := range m.logLines.Lines() {
+		lvl := strings.ToUpper(fmt.Sprintf("[%s]", l.Level.String()))
+		lvl = m.logLvlStyle(l.Level)(lvl)
+		l := fmt.Sprintf("%s %s", lvl, m.logMsgStyle()(l.Details))
 		l = wordwrap.String(l, m.screenWidth-5)
-		sb.WriteString(logStyle(l))
+		sb.WriteString(l)
 		sb.WriteString("\n")
 	}
 
@@ -173,6 +184,35 @@ func (m model) fetchAppendMsg() tea.Msg {
 }
 
 func (m model) timerTick() tea.Msg {
-	<-time.Tick(2 * time.Second)
+	<-time.Tick(5 * time.Second)
 	return TimerTickMsg(true)
+}
+
+func (m model) logLvlStyle(lvl logrus.Level) func(string) string {
+	c, ok := m.cfg.LogLevelColors[lvl]
+	if !ok {
+		c = m.cfg.LogTextColor
+	}
+
+	return m.getStyleRender(c)
+}
+
+func (m model) logMsgStyle() func(string) string {
+	return m.getStyleRender(m.cfg.LogTextColor)
+}
+
+func (m model) progressMsgStyle() func(string) string {
+	return m.getStyleRender(m.cfg.ProgressColor)
+}
+
+func (m model) successMsgStyle() func(string) string {
+	return m.getStyleRender(m.cfg.SuccessMessageColor)
+}
+
+func (m model) failedMsgStyle() func(string) string {
+	return m.getStyleRender(m.cfg.FailedMessageColor)
+}
+
+func (m model) getStyleRender(c lipgloss.Color) func(string) string {
+	return lipgloss.NewStyle().Foreground(c).Render
 }

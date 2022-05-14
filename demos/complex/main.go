@@ -35,7 +35,7 @@ func main() {
 		"[...] B Still doing it 3",
 		"[...] B Still doing it 4",
 		"[...] B Still doing it 5",
-		"[OK] B Failed to do the task",
+		"[FAILED] B Failed to do the task",
 	}, false)
 
 	ch <- 0
@@ -51,11 +51,7 @@ func runSequence(l prettylog.PrettyLogger, msgs []string, success bool) {
 		} else {
 
 			if i == len(msgs)-1 {
-				tp := prettylog.Failed
-				if success {
-					tp = prettylog.Succeeded
-				}
-				l.AppendMessage(tp, m)
+				l.AppendMessage(success, m)
 			} else {
 				l.AddProgress(m)
 			}

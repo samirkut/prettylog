@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -41,7 +40,7 @@ type PrettyLogger interface {
 	Start() error
 	Close()
 	AddProgress(format string, args ...interface{}) error
-	AppendMessage(tp MessageType, format string, args ...interface{}) error
+	AppendMessage(success bool, format string, args ...interface{}) error
 	LogMessage(level logrus.Level, format string, args ...interface{}) error
 }
 
@@ -52,7 +51,7 @@ func (*dummylogger) AddProgress(format string, args ...interface{}) error {
 	return nil
 }
 
-func (*dummylogger) AppendMessage(tp MessageType, format string, args ...interface{}) error {
+func (*dummylogger) AppendMessage(success bool, format string, args ...interface{}) error {
 	return nil
 }
 
@@ -112,7 +111,7 @@ func (p *prettylogger) Levels() []logrus.Level {
 }
 
 func (p *prettylogger) Fire(entry *logrus.Entry) error {
-	return p.writeLog(entry.Level, "[%s] %s", strings.ToUpper(entry.Level.String()), entry.Message)
+	return p.writeLog(entry.Level, entry.Message)
 }
 
 func (p *prettylogger) LogMessage(lvl logrus.Level, format string, args ...interface{}) error {
@@ -134,7 +133,7 @@ func (p *prettylogger) AddProgress(format string, args ...interface{}) error {
 	return nil
 }
 
-func (p *prettylogger) AppendMessage(tp MessageType, format string, args ...interface{}) error {
+func (p *prettylogger) AppendMessage(success bool, format string, args ...interface{}) error {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -143,7 +142,7 @@ func (p *prettylogger) AppendMessage(tp MessageType, format string, args ...inte
 	}
 
 	p.model.messagesCh <- AppendMessage{
-		Success: tp == Succeeded,
+		Success: success,
 		Details: fmt.Sprintf(format, args...),
 	}
 

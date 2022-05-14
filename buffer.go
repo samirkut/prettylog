@@ -4,37 +4,24 @@ package prettylog
 // TODO: rewrite using a ring buffer
 
 type buffer struct {
-	lines []string
+	lines []LogMsg
 }
 
 func newBuffer(size int) *buffer {
 	return &buffer{
-		lines: make([]string, 0, size),
+		lines: make([]LogMsg, 0, size),
 	}
 }
 
 func (b *buffer) Len() int {
 	return len(b.lines)
 }
-func (b *buffer) Lines() []string {
+
+func (b *buffer) Lines() []LogMsg {
 	return b.lines
 }
 
-func (b *buffer) PeekFirst() string {
-	if b.Len() == 0 {
-		return ""
-	}
-	return b.lines[0]
-}
-
-func (b *buffer) PeekLast() string {
-	if b.Len() == 0 {
-		return ""
-	}
-	return b.lines[len(b.lines)-1]
-}
-
-func (b *buffer) Add(line string) {
+func (b *buffer) Add(line LogMsg) {
 	if len(b.lines) < cap(b.lines) {
 		b.lines = append(b.lines, line)
 	} else {
@@ -44,4 +31,18 @@ func (b *buffer) Add(line string) {
 		}
 		b.lines[len(b.lines)-1] = line
 	}
+}
+
+func (b *buffer) PeekFirst() LogMsg {
+	if b.Len() == 0 {
+		return LogMsg{}
+	}
+	return b.lines[0]
+}
+
+func (b *buffer) PeekLast() LogMsg {
+	if b.Len() == 0 {
+		return LogMsg{}
+	}
+	return b.lines[b.Len()-1]
 }
