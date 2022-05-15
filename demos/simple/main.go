@@ -25,7 +25,7 @@ func main() {
 func runSequence(l prettylog.PrettyLogger, msgs []string, success bool) {
 	for i, m := range msgs {
 		if i == len(msgs)-1 {
-			l.AppendMessage(success, m)
+			l.AddCompletedMessage(success, m)
 			time.Sleep(time.Millisecond * 200)
 			logrus.Error("random updates after finish")
 		} else {

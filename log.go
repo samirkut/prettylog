@@ -36,11 +36,13 @@ func NewPrettyLogger(logger *logrus.Logger, cfg Config) (PrettyLogger, error) {
 	return plog, nil
 }
 
+// PrettyLogger overrides the logger using hooks and presents a clean scrolling UI
+// There are also function to show progress or completed messages
 type PrettyLogger interface {
 	Start()
 	Stop()
 	AddProgress(format string, args ...interface{}) error
-	AppendMessage(success bool, format string, args ...interface{}) error
+	AddCompletedMessage(success bool, format string, args ...interface{}) error
 	LogMessage(level logrus.Level, format string, args ...interface{}) error
 }
 
@@ -51,7 +53,7 @@ func (*dummylogger) AddProgress(format string, args ...interface{}) error {
 	return nil
 }
 
-func (*dummylogger) AppendMessage(success bool, format string, args ...interface{}) error {
+func (*dummylogger) AddCompletedMessage(success bool, format string, args ...interface{}) error {
 	return nil
 }
 
@@ -69,7 +71,7 @@ type prettylogger struct {
 	prog   *tea.Program
 	cfg    Config
 	model  model
-	mu     sync.RWMutex
+	mu     sync.RWMutex // synchronize access to closed bool
 }
 
 func newprettylogger(cfg Config) (*prettylogger, error) {
@@ -90,10 +92,9 @@ func (p *prettylogger) Start() {
 
 		p.mu.Lock()
 		p.closed = true
+		p.mu.Unlock()
 		close(p.model.logCh)
 		close(p.model.progressCh)
-		close(p.model.messagesCh)
-		p.mu.Unlock()
 	}()
 }
 
@@ -105,7 +106,7 @@ func (p *prettylogger) Stop() {
 }
 
 func (p *prettylogger) Levels() []logrus.Level {
-	return p.cfg.Levels
+	return p.cfg.LogLevels
 }
 
 func (p *prettylogger) Fire(entry *logrus.Entry) error {
@@ -118,10 +119,11 @@ func (p *prettylogger) LogMessage(lvl logrus.Level, format string, args ...inter
 
 func (p *prettylogger) AddProgress(format string, args ...interface{}) error {
 	p.mu.RLock()
-	defer p.mu.RUnlock()
+	closed := p.closed
+	p.mu.RUnlock()
 
-	if p.closed {
-		return fmt.Errorf("closed")
+	if closed {
+		return fmt.Errorf("closed channel")
 	}
 
 	p.model.progressCh <- ProgressMsg{
@@ -131,17 +133,20 @@ func (p *prettylogger) AddProgress(format string, args ...interface{}) error {
 	return nil
 }
 
-func (p *prettylogger) AppendMessage(success bool, format string, args ...interface{}) error {
+func (p *prettylogger) AddCompletedMessage(success bool, format string, args ...interface{}) error {
 	p.mu.RLock()
-	defer p.mu.RUnlock()
+	closed := p.closed
+	p.mu.RUnlock()
 
-	if p.closed {
-		return fmt.Errorf("closed")
+	if closed {
+		return fmt.Errorf("closed channel")
 	}
 
-	p.model.messagesCh <- AppendMessage{
-		Success: success,
-		Details: fmt.Sprintf(format, args...),
+	p.model.progressCh <- ProgressMsg{
+		Completed: CompletedMessage{
+			Success: success,
+			Details: fmt.Sprintf(format, args...),
+		},
 	}
 
 	return nil
@@ -149,10 +154,11 @@ func (p *prettylogger) AppendMessage(success bool, format string, args ...interf
 
 func (p *prettylogger) writeLog(lvl logrus.Level, format string, args ...interface{}) error {
 	p.mu.RLock()
-	defer p.mu.RUnlock()
+	closed := p.closed
+	p.mu.RUnlock()
 
-	if p.closed {
-		return fmt.Errorf("closed")
+	if closed {
+		return fmt.Errorf("closed channel")
 	}
 
 	msg := fmt.Sprintf(format, args...)

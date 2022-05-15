@@ -37,10 +37,11 @@ type LogMsg struct {
 }
 
 type ProgressMsg struct {
-	Details string
+	Details   string
+	Completed CompletedMessage
 }
 
-type AppendMessage struct {
+type CompletedMessage struct {
 	Details string
 	Success bool
 }
@@ -51,13 +52,12 @@ type model struct {
 	cfg          Config
 	spinner      spinner.Model
 	progress     string
-	messages     []AppendMessage
+	messages     *buffer
 	logLines     *buffer
 	screenWidth  int
 	screenHeight int
 	logCh        chan LogMsg
 	progressCh   chan ProgressMsg
-	messagesCh   chan AppendMessage
 }
 
 func newModel(cfg Config) model {
@@ -67,14 +67,13 @@ func newModel(cfg Config) model {
 	return model{
 		cfg:          cfg,
 		spinner:      sp,
-		messages:     make([]AppendMessage, 0),
+		messages:     newBuffer(cfg.MaxMessageRows),
 		logLines:     newBuffer(cfg.MaxLogRows),
 		startTime:    time.Now().UTC(),
 		screenWidth:  80,
 		screenHeight: 25,
 		logCh:        make(chan LogMsg),
 		progressCh:   make(chan ProgressMsg),
-		messagesCh:   make(chan AppendMessage),
 	}
 }
 
@@ -84,7 +83,6 @@ func (m model) Init() tea.Cmd {
 		spinner.Tick,
 		m.fetchLogMsg,
 		m.fetchProgressMsg,
-		m.fetchAppendMsg,
 	)
 }
 
@@ -114,16 +112,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.fetchLogMsg
 	case ProgressMsg:
-		if msg.Details != "" {
-			m.progress = msg.Details
+		m.progress = msg.Details
+		if msg.Completed.Details != "" {
+			m.messages.Add(msg.Completed)
 		}
 		return m, m.fetchProgressMsg
-	case AppendMessage:
-		if msg.Details != "" {
-			m.messages = append(m.messages, msg)
-		}
-		m.progress = ""
-		return m, m.fetchAppendMsg
 	}
 
 	return m, nil
@@ -133,9 +126,13 @@ func (m model) View() string {
 	sb := strings.Builder{}
 	sb.WriteString("\n")
 
-	for _, res := range m.messages {
-		p := wordwrap.String(res.Details, m.screenWidth-5)
-		if res.Success {
+	for _, res := range m.messages.Lines() {
+		msg, ok := res.(CompletedMessage)
+		if !ok {
+			continue // shouldnt happen
+		}
+		p := wordwrap.String(msg.Details, m.screenWidth-5)
+		if msg.Success {
 			p = m.successMsgStyle()(p)
 		} else {
 			p = m.failedMsgStyle()(p)
@@ -153,10 +150,14 @@ func (m model) View() string {
 
 	sb.WriteString("\n")
 
-	for _, l := range m.logLines.Lines() {
-		lvl := strings.ToUpper(fmt.Sprintf("[%s]", l.Level.String()))
-		lvl = m.logLvlStyle(l.Level)(lvl)
-		l := fmt.Sprintf("%s %s", lvl, m.logMsgStyle()(l.Details))
+	for _, res := range m.logLines.Lines() {
+		msg, ok := res.(LogMsg)
+		if !ok {
+			continue //shouldnt happen
+		}
+		lvl := strings.ToUpper(fmt.Sprintf("[%s]", msg.Level.String()))
+		lvl = m.logLvlStyle(msg.Level)(lvl)
+		l := fmt.Sprintf("%s %s", lvl, m.logMsgStyle()(msg.Details))
 		l = wordwrap.String(l, m.screenWidth-5)
 		sb.WriteString(l)
 		sb.WriteString("\n")
@@ -175,11 +176,6 @@ func (m model) fetchLogMsg() tea.Msg {
 
 func (m model) fetchProgressMsg() tea.Msg {
 	msg := <-m.progressCh
-	return msg
-}
-
-func (m model) fetchAppendMsg() tea.Msg {
-	msg := <-m.messagesCh
 	return msg
 }
 
