@@ -71,7 +71,7 @@ type prettylogger struct {
 	prog   *tea.Program
 	cfg    Config
 	model  model
-	mu     sync.RWMutex // synchronize access to closed bool
+	mu     sync.RWMutex // synchronize access to closed bool and for closing channels
 }
 
 func newprettylogger(cfg Config) (*prettylogger, error) {
@@ -92,9 +92,9 @@ func (p *prettylogger) Start() {
 
 		p.mu.Lock()
 		p.closed = true
-		p.mu.Unlock()
 		close(p.model.logCh)
 		close(p.model.progressCh)
+		p.mu.Unlock()
 	}()
 }
 
@@ -119,10 +119,9 @@ func (p *prettylogger) LogMessage(lvl logrus.Level, format string, args ...inter
 
 func (p *prettylogger) AddProgress(format string, args ...interface{}) error {
 	p.mu.RLock()
-	closed := p.closed
-	p.mu.RUnlock()
+	defer p.mu.RUnlock()
 
-	if closed {
+	if p.closed {
 		return fmt.Errorf("closed channel")
 	}
 
@@ -135,10 +134,9 @@ func (p *prettylogger) AddProgress(format string, args ...interface{}) error {
 
 func (p *prettylogger) AddCompletedMessage(success bool, format string, args ...interface{}) error {
 	p.mu.RLock()
-	closed := p.closed
-	p.mu.RUnlock()
+	defer p.mu.RUnlock()
 
-	if closed {
+	if p.closed {
 		return fmt.Errorf("closed channel")
 	}
 
@@ -154,10 +152,9 @@ func (p *prettylogger) AddCompletedMessage(success bool, format string, args ...
 
 func (p *prettylogger) writeLog(lvl logrus.Level, format string, args ...interface{}) error {
 	p.mu.RLock()
-	closed := p.closed
-	p.mu.RUnlock()
+	defer p.mu.RUnlock()
 
-	if closed {
+	if p.closed {
 		return fmt.Errorf("closed channel")
 	}
 
