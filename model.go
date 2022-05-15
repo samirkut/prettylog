@@ -126,10 +126,10 @@ func (m model) View() string {
 	sb := strings.Builder{}
 	sb.WriteString("\n")
 
-	for _, res := range m.messages.Lines() {
+	m.messages.Iterate(func(res tea.Msg) {
 		msg, ok := res.(CompletedMessage)
 		if !ok {
-			continue // shouldnt happen
+			return // shouldnt happen
 		}
 		p := wordwrap.String(msg.Details, m.screenWidth-5)
 		if msg.Success {
@@ -139,7 +139,7 @@ func (m model) View() string {
 		}
 		sb.WriteString(p)
 		sb.WriteString("\n")
-	}
+	})
 
 	if m.progress != "" {
 		p := fmt.Sprintf("%s %s", m.spinner.View(), m.progress)
@@ -150,10 +150,10 @@ func (m model) View() string {
 
 	sb.WriteString("\n")
 
-	for _, res := range m.logLines.Lines() {
+	m.logLines.Iterate(func(res tea.Msg) {
 		msg, ok := res.(LogMsg)
 		if !ok {
-			continue //shouldnt happen
+			return //shouldnt happen
 		}
 		lvl := strings.ToUpper(fmt.Sprintf("[%s]", msg.Level.String()))
 		lvl = m.logLvlStyle(msg.Level)(lvl)
@@ -161,7 +161,7 @@ func (m model) View() string {
 		l = wordwrap.String(l, m.screenWidth-5)
 		sb.WriteString(l)
 		sb.WriteString("\n")
-	}
+	})
 
 	sb.WriteString(timerStyle(fmt.Sprintf("\nDuration: %s\n", m.duration.Truncate(time.Second))))
 
