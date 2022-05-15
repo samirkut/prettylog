@@ -9,7 +9,8 @@ type Config struct {
 	ProgressColor       lipgloss.Color
 	SuccessMessageColor lipgloss.Color
 	FailedMessageColor  lipgloss.Color
-	Levels              []logrus.Level
+	MaxMessageRows      int
+	LogLevels           []logrus.Level
 	LogLevelColors      map[logrus.Level]lipgloss.Color
 	LogTextColor        lipgloss.Color
 	MaxLogRows          int
@@ -20,7 +21,8 @@ func NewConfig() Config {
 		ProgressColor:       lipgloss.Color("158"),
 		SuccessMessageColor: lipgloss.Color("82"),
 		FailedMessageColor:  lipgloss.Color("196"),
-		Levels: []logrus.Level{
+		MaxMessageRows:      15,
+		LogLevels: []logrus.Level{
 			logrus.ErrorLevel,
 			logrus.WarnLevel,
 			logrus.InfoLevel,

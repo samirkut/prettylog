@@ -51,7 +51,7 @@ func runSequence(l prettylog.PrettyLogger, msgs []string, success bool) {
 		} else {
 
 			if i == len(msgs)-1 {
-				l.AppendMessage(success, m)
+				l.AddCompletedMessage(success, m)
 			} else {
 				l.AddProgress(m)
 			}
