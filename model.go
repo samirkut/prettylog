@@ -63,6 +63,7 @@ type model struct {
 func newModel(cfg Config) model {
 	sp := spinner.New()
 	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("206"))
+	sp.Spinner = spinner.Dot
 
 	return model{
 		cfg:          cfg,
