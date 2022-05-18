@@ -18,10 +18,10 @@ type Config struct {
 
 func NewConfig() Config {
 	return Config{
-		ProgressColor:       lipgloss.Color("158"),
+		ProgressColor:       lipgloss.Color("178"),
 		SuccessMessageColor: lipgloss.Color("82"),
-		FailedMessageColor:  lipgloss.Color("196"),
-		MaxMessageRows:      15,
+		FailedMessageColor:  lipgloss.Color("160"),
+		MaxMessageRows:      10,
 		LogLevels: []logrus.Level{
 			logrus.ErrorLevel,
 			logrus.WarnLevel,
