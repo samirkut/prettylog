@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/reflow/ansi"
 	"github.com/muesli/reflow/indent"
 	"github.com/muesli/reflow/wordwrap"
 	"github.com/sirupsen/logrus"
@@ -63,6 +64,7 @@ type model struct {
 func newModel(cfg Config) model {
 	sp := spinner.New()
 	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("206"))
+	sp.Spinner = spinner.Dot
 
 	return model{
 		cfg:          cfg,
@@ -150,17 +152,26 @@ func (m model) View() string {
 
 	sb.WriteString("\n")
 
+	logLineCount := 0
 	m.logLines.Iterate(func(res tea.Msg) {
+		if logLineCount >= m.cfg.MaxLogRows {
+			return
+		}
+
 		msg, ok := res.(LogMsg)
 		if !ok {
 			return //shouldnt happen
 		}
+
 		lvl := strings.ToUpper(fmt.Sprintf("[%s]", msg.Level.String()))
 		lvl = m.logLvlStyle(msg.Level)(lvl)
 		l := fmt.Sprintf("%s %s", lvl, m.logMsgStyle()(msg.Details))
 		l = wordwrap.String(l, m.screenWidth-5)
 		sb.WriteString(l)
 		sb.WriteString("\n")
+
+		// width of -6 since we will do an indent of 1 later
+		logLineCount += m.countLinesInString(l, m.screenWidth-6)
 	})
 
 	sb.WriteString(timerStyle(fmt.Sprintf("\nDuration: %s\n", m.duration.Truncate(time.Second))))
@@ -211,4 +222,20 @@ func (m model) failedMsgStyle() func(string) string {
 
 func (m model) getStyleRender(c lipgloss.Color) func(string) string {
 	return lipgloss.NewStyle().Foreground(c).Render
+}
+
+func (m model) countLinesInString(str string, screenWidth int) int {
+	count := 0
+
+	for _, s := range strings.Split(str, "\n") {
+		strWidth := ansi.PrintableRuneWidth(s)
+		// int division so this only captures the quotient
+		count += strWidth / screenWidth
+		// if there is a remainder add one more line
+		if strWidth%screenWidth > 0 {
+			count++
+		}
+	}
+
+	return count
 }
