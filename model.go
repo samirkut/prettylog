@@ -2,6 +2,7 @@ package prettylog
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -55,6 +56,8 @@ type model struct {
 	progress     string
 	messages     *buffer
 	logLines     *buffer
+	messageRows  int
+	logRows      int
 	screenWidth  int
 	screenHeight int
 	logCh        chan LogMsg
@@ -66,7 +69,7 @@ func newModel(cfg Config) model {
 	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("206"))
 	sp.Spinner = spinner.Dot
 
-	return model{
+	m := model{
 		cfg:          cfg,
 		spinner:      sp,
 		messages:     newBuffer(cfg.MaxMessageRows),
@@ -77,6 +80,10 @@ func newModel(cfg Config) model {
 		logCh:        make(chan LogMsg),
 		progressCh:   make(chan ProgressMsg),
 	}
+
+	m.messageRows, m.logRows = m.adjustMessageAndLogSizes()
+
+	return m
 }
 
 func (m model) Init() tea.Cmd {
@@ -100,6 +107,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.screenWidth = msg.Width
 		m.screenHeight = msg.Height
+		m.messageRows, m.logRows = m.adjustMessageAndLogSizes()
 		return m, nil
 	case spinner.TickMsg:
 		var cmd tea.Cmd
@@ -128,7 +136,13 @@ func (m model) View() string {
 	sb := strings.Builder{}
 	sb.WriteString("\n")
 
+	skipCount := m.messages.Len() - m.messageRows
 	m.messages.Iterate(func(res tea.Msg) {
+		if skipCount > 0 {
+			skipCount--
+			return
+		}
+
 		msg, ok := res.(CompletedMessage)
 		if !ok {
 			return // shouldnt happen
@@ -153,7 +167,17 @@ func (m model) View() string {
 	sb.WriteString("\n")
 
 	logLineCount := 0
+	skipCount = m.logLines.Len() - m.logRows
+	//adjest the message rows back
+	if m.messages.Len() < m.messageRows {
+		skipCount -= (m.messageRows - m.messages.Len())
+	}
 	m.logLines.Iterate(func(res tea.Msg) {
+		if skipCount > 0 {
+			skipCount--
+			return
+		}
+
 		if logLineCount >= m.cfg.MaxLogRows {
 			return
 		}
@@ -238,4 +262,44 @@ func (m model) countLinesInString(str string, screenWidth int) int {
 	}
 
 	return count
+}
+
+func (m model) adjustMessageAndLogSizes() (int, int) {
+	// adjust the message and log size based on screen height
+	// the max is set in config
+	// min is set to 1
+	messageSize := 1
+	logSize := 1
+
+	// ===== view ================
+	// blank line
+	// messages
+	// progress
+	// blank line
+	// logs
+	// blank line
+	// duration
+	// blank line
+	// =======================
+
+	height := m.screenHeight - 6 // everything but messages and logs
+	height -= 2                  // min size for messages and logs
+	// whatever is left split between log and messages in the same ratio
+	// as max message rows and max log rows
+	if height > 0 {
+		messageSize = int(math.Ceil(float64(height) * float64(m.cfg.MaxMessageRows) / float64(m.cfg.MaxMessageRows+m.cfg.MaxLogRows)))
+		if messageSize > m.cfg.MaxMessageRows {
+			messageSize = m.cfg.MaxMessageRows
+		}
+
+		logSize = height - messageSize
+		if logSize < 0 {
+			logSize = 1
+		}
+		if logSize > m.cfg.MaxLogRows {
+			logSize = m.cfg.MaxLogRows
+		}
+	}
+
+	return messageSize, logSize
 }
