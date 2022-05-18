@@ -42,6 +42,7 @@ type ProgressMsg struct {
 }
 
 type CompletedMessage struct {
+	Status  string
 	Details string
 	Success bool
 }
@@ -62,7 +63,8 @@ type model struct {
 
 func newModel(cfg Config) model {
 	sp := spinner.New()
-	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("206"))
+	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("180"))
+	sp.Spinner = spinner.Dot
 
 	return model{
 		cfg:          cfg,
@@ -131,20 +133,21 @@ func (m model) View() string {
 		if !ok {
 			return // shouldnt happen
 		}
-		p := wordwrap.String(msg.Details, m.screenWidth-5)
-		if msg.Success {
-			p = m.successMsgStyle()(p)
-		} else {
-			p = m.failedMsgStyle()(p)
+
+		st := m.successMsgStyle()(msg.Status)
+		if !msg.Success {
+			st = m.failedMsgStyle()(msg.Status)
 		}
+
+		p := wordwrap.String(fmt.Sprintf("%s %s", st, msg.Details), m.screenWidth-5)
 		sb.WriteString(p)
 		sb.WriteString("\n")
 	})
 
 	if m.progress != "" {
-		p := fmt.Sprintf("%s %s", m.spinner.View(), m.progress)
+		p := fmt.Sprintf("%s %s", m.spinner.View(), m.progressMsgStyle()(m.progress))
 		p = wordwrap.String(p, m.screenWidth-5)
-		sb.WriteString(m.progressMsgStyle()(p))
+		sb.WriteString(p)
 		sb.WriteString("\n")
 	}
 
