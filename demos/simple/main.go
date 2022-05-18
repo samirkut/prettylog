@@ -10,8 +10,7 @@ import (
 
 func main() {
 	cfg := prettylog.NewConfig()
-	l, _ := prettylog.NewPrettyGlobalLogger(cfg)
-	l.Start()
+	l := prettylog.NewPrettyGlobalLogger(cfg)
 	defer l.Stop()
 
 	runSequence(l, []string{

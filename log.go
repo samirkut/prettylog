@@ -13,19 +13,16 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func NewPrettyGlobalLogger(cfg Config) (PrettyLogger, error) {
+func NewPrettyGlobalLogger(cfg Config) PrettyLogger {
 	return NewPrettyLogger(logrus.StandardLogger(), cfg)
 }
 
-func NewPrettyLogger(logger *logrus.Logger, cfg Config) (PrettyLogger, error) {
+func NewPrettyLogger(logger *logrus.Logger, cfg Config) PrettyLogger {
 	if !isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd()) {
-		return &dummylogger{}, nil
+		return &dummylogger{}
 	}
 
-	plog, err := newprettylogger(cfg)
-	if err != nil {
-		return nil, err
-	}
+	plog := newprettylogger(cfg)
 
 	logger.AddHook(plog)
 	if logger.Out == os.Stdout || logger.Out == os.Stderr {
@@ -33,13 +30,12 @@ func NewPrettyLogger(logger *logrus.Logger, cfg Config) (PrettyLogger, error) {
 		log.SetOutput(ioutil.Discard)
 	}
 
-	return plog, nil
+	return plog
 }
 
 // PrettyLogger overrides the logger using hooks and presents a clean scrolling UI
 // There are also function to show progress or completed messages
 type PrettyLogger interface {
-	Start()
 	Stop()
 	AddProgress(format string, args ...interface{}) error
 	AddCompletedMessage(success bool, format string, args ...interface{}) error
@@ -61,9 +57,6 @@ func (*dummylogger) LogMessage(lvl logrus.Level, format string, args ...interfac
 	return nil
 }
 
-func (*dummylogger) Start() {
-}
-
 func (*dummylogger) Stop() {}
 
 type prettylogger struct {
@@ -74,19 +67,17 @@ type prettylogger struct {
 	mu     sync.RWMutex // synchronize access to closed bool and for closing channels
 }
 
-func newprettylogger(cfg Config) (*prettylogger, error) {
+func newprettylogger(cfg Config) *prettylogger {
 	mod := newModel(cfg)
 	prog := tea.NewProgram(mod)
 
-	return &prettylogger{
+	p := &prettylogger{
 		prog:   prog,
 		cfg:    cfg,
 		closed: false,
 		model:  mod,
-	}, nil
-}
+	}
 
-func (p *prettylogger) Start() {
 	go func() {
 		_ = p.prog.Start()
 
@@ -96,6 +87,8 @@ func (p *prettylogger) Start() {
 		close(p.model.progressCh)
 		p.mu.Unlock()
 	}()
+
+	return p
 }
 
 func (p *prettylogger) Stop() {
