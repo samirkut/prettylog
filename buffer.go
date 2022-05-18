@@ -32,6 +32,17 @@ func (b *buffer) Iterate(fn func(tea.Msg)) {
 	}
 }
 
+func (b *buffer) ReverseIterate(fn func(tea.Msg)) {
+	ptr := b.getLastPtr()
+	for i := 0; i < b.size; i++ {
+		fn(b.lines[ptr])
+		ptr--
+		if ptr < 0 {
+			ptr = b.maxSize - 1
+		}
+	}
+}
+
 func (b *buffer) Add(line tea.Msg) {
 	b.lines[b.nextIdx] = line
 	b.nextIdx = (b.nextIdx + 1) % b.maxSize

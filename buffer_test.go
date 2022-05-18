@@ -23,6 +23,16 @@ func TestBuffer(t *testing.T) {
 			lst = append(lst, res.(string))
 		})
 
+		revLst := []string{}
+		buffer.ReverseIterate(func(res tea.Msg) {
+			revLst = append(revLst, res.(string))
+		})
+
+		assert.Equal(t, len(lst), len(revLst))
+		for idx := range lst {
+			assert.Equal(t, lst[idx], revLst[buffer.Len()-idx-1])
+		}
+
 		if i < size-1 {
 			assert.Equal(t, i+1, buffer.Len())
 			assert.Equal(t, "line 0", buffer.PeekFirst().(string))

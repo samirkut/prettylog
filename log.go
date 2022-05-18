@@ -13,6 +13,10 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+func NewDummyLogger(cfg Config) PrettyLogger {
+	return &dummylogger{}
+}
+
 func NewPrettyGlobalLogger(cfg Config) PrettyLogger {
 	return NewPrettyLogger(logrus.StandardLogger(), cfg)
 }
